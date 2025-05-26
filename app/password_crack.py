@@ -1,6 +1,6 @@
 import hashlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Set
+from typing import List, Set, Dict
 
 
 def sha256_hash_str(to_hash: str) -> str:
@@ -15,22 +15,23 @@ def sha256_hash_str(to_hash: str) -> str:
     return hashlib.sha256(to_hash.encode("utf-8")).hexdigest()
 
 
-def process_range(start: int, end: int, target_hashes: Set[str]) -> List[str]:
-    found_passwords = []
+def process_range(start: int, end: int, target_hashes: Set[str]) -> (
+        Dict)[str, str]:
+    found_passwords = {}
     for i in range(start, end):
         password = str(i).zfill(8)
         password_hash = sha256_hash_str(password)
         if password_hash in target_hashes:
-            found_passwords.append(password)
+            found_passwords[password_hash] = password
     return found_passwords
 
 
 def find_passwords(target_hashes: Set[str]) -> List[str]:
-    found_passwords = []
+    found_passwords = {}
     chunk_size = 1000000
     total_passwords = 100000000
 
-    with ProcessPoolExecutor() as executor:
+    with (ProcessPoolExecutor() as executor):
         futures = []
         for start in range(0, total_passwords, chunk_size):
             end = min(start + chunk_size, total_passwords)
@@ -38,11 +39,15 @@ def find_passwords(target_hashes: Set[str]) -> List[str]:
             futures.append(future)
 
         for future in as_completed(futures):
-            found_passwords.extend(future.result())
-            if len(found_passwords) == len(target_hashes):
-                break
+            chunk_results = future.result()
+            found_passwords.update(chunk_results)
 
-    return found_passwords
+            if len(found_passwords) == len(target_hashes):
+                if all(hash_value in found_passwords for
+                       hash_value in target_hashes):
+                    break
+
+    return [found_passwords[hash_value] for hash_value in target_hashes]
 
 
 def main() -> None:
